@@ -100,12 +100,12 @@ wheels = [
 
 [[package]]
 name = "imads"
-version = "1.0.3"
-source = { git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v1.0.3#b49c376db635d87b2878ccfdbc97f7780935df1f" }
+version = "1.0.4"
+source = { git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v1.0.4#fadc98ba33dc0e0b41959bbea074235efc13ac1c" }
 
 [[package]]
 name = "imads-hpo"
-version = "0.1.5"
+version = "0.1.6"
 source = { editable = "." }
 dependencies = [
     { name = "imads" },
@@ -120,7 +120,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "imads", git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v1.0.3" },
+    { name = "imads", git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v1.0.4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "safetensors" },
     { name = "torch", specifier = ">=2.0" },
