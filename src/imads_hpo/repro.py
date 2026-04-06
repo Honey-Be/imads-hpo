@@ -116,7 +116,7 @@ def configure_determinism(config: DeterminismConfig) -> dict[str, Any]:
         torch.cuda.manual_seed_all(config.master_seed)
 
     if hasattr(torch, "use_deterministic_algorithms"):
-        torch.use_deterministic_algorithms(config.deterministic_algorithms)
+        torch.use_deterministic_algorithms(config.deterministic_algorithms, warn_only=True)
     if hasattr(torch.backends, "cudnn"):
         torch.backends.cudnn.benchmark = bool(config.cudnn_benchmark)
         torch.backends.cudnn.deterministic = bool(config.cudnn_deterministic)
