@@ -72,6 +72,8 @@ print(result.best_value)
 
 All dimensions are encoded as 64-bit integers for IMADS mesh compatibility.
 
+> **Note:** The search space dimensionality is automatically propagated to the IMADS engine. The `HpoEvaluator` exposes a `search_dim()` method (via the `SpaceEncoder.search_dim` property), so the engine discovers the number of dimensions from the evaluator. There is no need to manually set `EngineConfig.search_dim`.
+
 ```python
 space = hpo.Space({
     "lr":        hpo.LogReal(1e-5, 1e-1),    # log-scale

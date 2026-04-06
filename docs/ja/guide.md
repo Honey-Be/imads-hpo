@@ -72,6 +72,8 @@ print(result.best_value)
 
 すべての次元は IMADS メッシュとの互換性のために 64 ビット整数としてエンコーディングされます。
 
+> **注意:** 探索空間の次元数は IMADS エンジンに自動的に伝播されます。`HpoEvaluator` が `search_dim()` メソッドを提供し（`SpaceEncoder.search_dim` プロパティ経由）、エンジンは evaluator から次元数を自動的に検出します。`EngineConfig.search_dim` を手動で設定する必要はありません。
+
 ```python
 space = hpo.Space({
     "lr":        hpo.LogReal(1e-5, 1e-1),    # log-scale

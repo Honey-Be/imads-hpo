@@ -72,6 +72,8 @@ print(result.best_value)
 
 모든 차원은 IMADS mesh 호환성을 위해 64비트 정수로 인코딩됩니다.
 
+> **참고:** 탐색 공간의 차원 수는 IMADS 엔진에 자동으로 전달됩니다. `HpoEvaluator`가 `search_dim()` 메서드를 제공하며(`SpaceEncoder.search_dim` 속성을 통해), 엔진이 evaluator로부터 차원 수를 자동으로 파악합니다. `EngineConfig.search_dim`을 수동으로 설정할 필요가 없습니다.
+
 ```python
 space = hpo.Space({
     "lr":        hpo.LogReal(1e-5, 1e-1),    # log-scale

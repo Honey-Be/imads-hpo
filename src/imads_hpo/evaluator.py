@@ -57,5 +57,9 @@ class HpoEvaluator:
     def num_constraints(self) -> int:
         return self._wrapped.num_constraints
 
+    def search_dim(self) -> int:
+        """Return the number of search dimensions from the Space encoder."""
+        return self._wrapped.encoder.search_dim
+
 
 __all__ = ["HpoEvaluator"]
