@@ -111,7 +111,6 @@ def configure_determinism(config: DeterminismConfig) -> dict[str, Any]:
         os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", config.cublas_workspace_config)
 
     random.seed(config.master_seed)
-    np.random.seed(config.master_seed)
     torch.manual_seed(config.master_seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(config.master_seed)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "imads-hpo"
-version = "0.1.4"
+version = "0.1.5"
 requires-python = ">=3.12"
 license = "MIT OR Apache-2.0 OR LGPL-2.1-or-later"
 description = "PyTorch hyperparameter optimization via IMADS (Mesh Adaptive Direct Search)"
@@ -13,6 +13,13 @@ dependencies = [
     "torch>=2.0",
     "safetensors",
 ]
+
+[project.optional-dependencies]
+cpu = ["torch"]
+cu126 = ["torch"]
+cu128 = ["torch"]
+cu130 = ["torch"]
+dev = ["pytest>=8.0"]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -33,9 +40,6 @@ explicit = true
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
 explicit = true
-
-[project.optional-dependencies]
-dev = ["pytest>=8.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/imads_hpo"]

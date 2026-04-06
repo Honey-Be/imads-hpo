@@ -105,7 +105,7 @@ source = { git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&ta
 
 [[package]]
 name = "imads-hpo"
-version = "0.1.1"
+version = "0.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "imads" },
@@ -124,8 +124,16 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "safetensors" },
     { name = "torch", specifier = ">=2.0" },
+    { name = "torch", marker = "extra != 'cpu' and extra != 'cu126' and extra != 'cu128' and extra == 'cu130'", index = "https://download.pytorch.org/whl/cu130", conflict = { package = "imads-hpo", extra = "cu130" } },
+    { name = "torch", marker = "extra != 'cpu' and extra != 'cu126' and extra == 'cu128' and extra != 'cu130'", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "imads-hpo", extra = "cu128" } },
+    { name = "torch", marker = "extra != 'cpu' and extra == 'cu126' and extra != 'cu128' and extra != 'cu130'", index = "https://download.pytorch.org/whl/cu126", conflict = { package = "imads-hpo", extra = "cu126" } },
+    { name = "torch", marker = "(extra == 'cpu' and extra == 'cu126') or (extra == 'cu126' and extra == 'cu128') or (extra == 'cu126' and extra == 'cu130')" },
+    { name = "torch", marker = "(extra == 'cpu' and extra == 'cu126') or (extra == 'cpu' and extra == 'cu128') or (extra == 'cpu' and extra == 'cu130')" },
+    { name = "torch", marker = "extra == 'cpu' and extra != 'cu126' and extra != 'cu128' and extra != 'cu130'", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "imads-hpo", extra = "cpu" } },
+    { name = "torch", marker = "(extra == 'cpu' and extra == 'cu128') or (extra == 'cu126' and extra == 'cu128') or (extra == 'cu128' and extra == 'cu130')" },
+    { name = "torch", marker = "(extra == 'cpu' and extra == 'cu130') or (extra == 'cu126' and extra == 'cu130') or (extra == 'cu128' and extra == 'cu130')" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["cpu", "cu126", "cu128", "cu130", "dev"]
 
 [[package]]
 name = "iniconfig"
