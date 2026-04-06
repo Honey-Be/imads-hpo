@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imads-hpo"
+version = "0.1.0"
+requires-python = ">=3.11"
+license = "MIT OR Apache-2.0 OR LGPL-2.1-or-later"
+description = "PyTorch hyperparameter optimization via IMADS (Mesh Adaptive Direct Search)"
+dependencies = [
+    "imads @ git+https://github.com/Honey-Be/imads.git@v1.0.0",
+    "torch>=2.0",
+    "safetensors",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imads_hpo"]
+
+[tool.uv.sources]
+imads = { git = "https://github.com/Honey-Be/imads.git", tag = "v1.0.0" }
