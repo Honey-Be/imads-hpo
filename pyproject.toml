@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 license = "MIT OR Apache-2.0 OR LGPL-2.1-or-later"
 description = "PyTorch hyperparameter optimization via IMADS (Mesh Adaptive Direct Search)"
 dependencies = [
-    "imads @ git+https://github.com/Honey-Be/imads.git@v1.0.3#subdirectory=imads-py",
+    "imads @ git+https://github.com/Honey-Be/imads.git@v1.0.4#subdirectory=imads-py",
     "torch>=2.0",
     "safetensors",
 ]
