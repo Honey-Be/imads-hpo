@@ -29,6 +29,16 @@ class DimEncoding:
     int_step: int | None = None
     # For categorical: original choices
     choices: tuple[Any, ...] | None = None
+    # Lower / upper bound in the *original* space (Real / LogReal). Used
+    # by ``decode`` to clamp mesh coordinates that fall outside the
+    # declared search range — IMADS may poll points beyond the bounds
+    # during its mesh exploration, and v1.0.1 propagated those raw values
+    # directly, producing impossible HP values like ``weight_decay=4.0``
+    # from a ``Real(0.0, 0.1)`` declaration or ``math.exp`` overflows
+    # from ``LogReal``.
+    low: float | None = None
+    high: float | None = None
+    log_high: float | None = None
 
 
 class SpaceEncoder:
@@ -54,7 +64,10 @@ class SpaceEncoder:
             if isinstance(dim, Real):
                 step = (dim.high - dim.low) / max(resolution, 1)
                 self._encodings.append(
-                    DimEncoding(name=name, kind="real", base_step=step, offset=dim.low)
+                    DimEncoding(
+                        name=name, kind="real", base_step=step,
+                        offset=dim.low, low=dim.low, high=dim.high,
+                    )
                 )
 
             elif isinstance(dim, LogReal):
@@ -64,7 +77,8 @@ class SpaceEncoder:
                 self._encodings.append(
                     DimEncoding(
                         name=name, kind="logreal", base_step=step,
-                        offset=log_low, log_low=log_low,
+                        offset=log_low, log_low=log_low, log_high=log_high,
+                        low=dim.low, high=dim.high,
                     )
                 )
 
@@ -128,19 +142,41 @@ class SpaceEncoder:
         return coords
 
     def decode(self, mesh_coords: list[int]) -> dict[str, Any]:
-        """Decode mesh coordinates back to hyperparameters."""
+        """Decode mesh coordinates back to hyperparameters.
+
+        Mesh coordinates are clamped to the declared search bounds before
+        being returned. IMADS may poll points outside the original bounds
+        during its mesh exploration phase; without clamping these would
+        leak into user objectives as out-of-range values (and in the
+        ``logreal`` case, ``math.exp`` would overflow).
+        """
         params: dict[str, Any] = {}
         for enc, coord in zip(self._encodings, mesh_coords):
             if enc.kind == "real":
-                params[enc.name] = enc.offset + coord * enc.base_step
+                val = enc.offset + coord * enc.base_step
+                if enc.low is not None and enc.high is not None:
+                    val = max(enc.low, min(enc.high, val))
+                params[enc.name] = val
 
             elif enc.kind == "logreal":
                 log_val = enc.offset + coord * enc.base_step
-                params[enc.name] = math.exp(log_val)
+                if enc.log_high is not None:
+                    log_val = max(enc.log_low, min(enc.log_high, log_val))
+                val = math.exp(log_val)
+                # Float precision: ``math.exp(math.log(low))`` may be ε
+                # below ``low``. Clamp once more in linear space against
+                # the *original* bounds (not their re-exp'd versions) so
+                # the result is guaranteed to satisfy ``low <= val <= high``.
+                if enc.low is not None and enc.high is not None:
+                    val = max(enc.low, min(enc.high, val))
+                params[enc.name] = val
 
             elif enc.kind == "integer":
                 step = enc.int_step or 1
                 val = int(enc.offset) + coord * step
+                if enc.n_values is not None:
+                    max_val = int(enc.offset) + (enc.n_values - 1) * step
+                    val = max(int(enc.offset), min(max_val, val))
                 params[enc.name] = val
 
             elif enc.kind == "categorical":

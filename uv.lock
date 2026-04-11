@@ -927,7 +927,7 @@ source = { git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&ta
 
 [[package]]
 name = "imads-hpo"
-version = "1.0.2"
+version = "1.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "imads" },
