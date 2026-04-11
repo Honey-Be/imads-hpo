@@ -52,6 +52,15 @@ def minimize(
 
     # Create IMADS engine
     cfg = imads.EngineConfig.from_preset(preset)
+    # Propagate the user-facing eval budget into the engine config.
+    # In v1.0.1 ``max_evals`` was a dead parameter — the preset's default
+    # ``max_iters`` was always used. v1.0.2 forwards it through the new
+    # ``EngineConfig.max_iters`` setter. Since one engine iteration may
+    # produce multiple truth evaluations, this value is an upper bound on
+    # iterations rather than a strict eval count.
+    if max_evals is not None and max_evals > 0:
+        cfg.max_iters = int(max_evals)
+
     env = imads.Env(
         run_id=seed,
         config_hash=hash(preset) & 0xFFFFFFFFFFFFFFFF,

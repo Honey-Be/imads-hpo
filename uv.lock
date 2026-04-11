@@ -922,12 +922,12 @@ wheels = [
 
 [[package]]
 name = "imads"
-version = "2.0.0"
-source = { git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v2.0.0#4c55a699afccf350cd2009388825f755582660b0" }
+version = "2.0.1"
+source = { git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v2.0.1#1d4d093a55356ada50d8399a8bed1d36f2fbe812" }
 
 [[package]]
 name = "imads-hpo"
-version = "1.0.1"
+version = "1.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "imads" },
@@ -957,7 +957,7 @@ wandb = [
 
 [package.metadata]
 requires-dist = [
-    { name = "imads", git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v2.0.0" },
+    { name = "imads", git = "https://github.com/Honey-Be/imads.git?subdirectory=imads-py&tag=v2.0.1" },
     { name = "mlflow", marker = "extra == 'all'", specifier = ">=2.0" },
     { name = "mlflow", marker = "extra == 'mlflow'", specifier = ">=2.0" },
     { name = "numpy" },

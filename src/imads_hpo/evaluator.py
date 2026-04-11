@@ -53,9 +53,42 @@ class HpoEvaluator:
         """Optional fast rejection (always accept by default)."""
         return True
 
+    def solver_bias(
+        self, x: list[float], tau: int
+    ) -> tuple[float, list[float]]:
+        """Return zero solver bias for HPO trials.
+
+        The IMADS engine queries this for tau-dependent residual effects
+        (e.g. when the underlying solver introduces a bias that depends on
+        the tolerance level). HPO trials are independent black-box
+        evaluations with no such bias, so we always return zero objectives
+        and zero constraint slacks.
+
+        This was missing in v1.0.1, which caused imads-core to fall back
+        to its default ``unimplemented!()`` panic
+        ("solver_bias requires explicit implementation for multi-objective
+        evaluators") for any single-objective HPO run.
+        """
+        n_obj = self.num_objectives
+        n_cons = self.num_constraints
+        if n_obj <= 1:
+            return (0.0, [0.0] * n_cons)
+        # multi-objective path: return zero vector of objectives
+        return ([0.0] * n_obj, [0.0] * n_cons)  # type: ignore[return-value]
+
     @property
     def num_constraints(self) -> int:
         return self._wrapped.num_constraints
+
+    @property
+    def num_objectives(self) -> int:
+        """Number of objectives this evaluator returns.
+
+        HPO is single-objective unless ``@objective(..., num_objectives=N)``
+        was used. Required by the IMADS Evaluator protocol; was missing in
+        v1.0.1.
+        """
+        return self._wrapped.num_objectives
 
     def search_dim(self) -> int:
         """Return the number of search dimensions from the Space encoder."""
