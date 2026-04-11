@@ -11,7 +11,7 @@ import imads
 from imads_hpo.checkpoint import CheckpointManager
 from imads_hpo.encoding import SpaceEncoder
 from imads_hpo.evaluator import HpoEvaluator
-from imads_hpo.fidelity import EpochFidelity
+from imads_hpo.fidelity import FidelitySchedule
 from imads_hpo.objective import WrappedObjective
 from imads_hpo.result import Result
 
@@ -22,7 +22,7 @@ def minimize(
     preset: str = "balanced",
     max_evals: int = 100,
     workers: int = 1,
-    fidelity: EpochFidelity | None = None,
+    fidelity: FidelitySchedule | None = None,
     seed: int = 42,
     checkpoint_dir: str | Path | None = None,
 ) -> Result:
@@ -33,7 +33,7 @@ def minimize(
         preset: IMADS preset name ("balanced", "conservative", "throughput").
         max_evals: Approximate evaluation budget.
         workers: Number of parallel workers (1 = single-threaded).
-        fidelity: Epoch-based fidelity configuration. If None, single-fidelity.
+        fidelity: Fidelity schedule configuration. If None, single-fidelity.
         seed: Master random seed for deterministic execution.
         checkpoint_dir: Directory for training checkpoints. If None, uses tempdir.
 

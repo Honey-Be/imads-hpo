@@ -10,7 +10,7 @@ from typing import Any, Optional
 class TrialRecord:
     """Record of a single evaluated trial."""
     params: dict[str, Any]
-    value: float
+    value: float | list[float]
     constraints: list[float]
     feasible: bool
     mesh_coords: list[int]
@@ -22,10 +22,11 @@ class Result:
     """Result of an HPO optimization run."""
 
     best_params: Optional[dict[str, Any]] = None
-    best_value: Optional[float] = None
+    best_value: Optional[float | list[float]] = None
     best_mesh_coords: Optional[list[int]] = None
     trials: list[TrialRecord] = field(default_factory=list)
     stats: dict[str, Any] = field(default_factory=dict)
+    pareto_front: list[TrialRecord] = field(default_factory=list)
 
     @property
     def n_trials(self) -> int:

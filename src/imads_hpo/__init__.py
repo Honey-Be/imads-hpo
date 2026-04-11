@@ -21,11 +21,16 @@ Example::
 
 from imads_hpo.callbacks import Callback, PrintCallback
 from imads_hpo.checkpoint import CheckpointManager, TrainingState
-from imads_hpo.constraints import GpuMemoryConstraint, LatencyConstraint, ModelSizeConstraint
+from imads_hpo.early_stopping import EarlyStoppingRule, MedianStopper, PatientStopper, ThresholdStopper
+from imads_hpo.constraints import (
+    CompositeConstraint, ConditionalConstraint, DynamicBoundConstraint,
+    GpuMemoryConstraint, LatencyConstraint, ModelSizeConstraint,
+)
 from imads_hpo.encoding import SpaceEncoder
-from imads_hpo.fidelity import EpochFidelity, Fidelity
+from imads_hpo.fidelity import DataFractionFidelity, EpochFidelity, ExplicitFidelity, Fidelity, FidelitySchedule
 from imads_hpo.fp import Run, RunLog, ask, asks, curry, get_state, modify_state, put_state, sequence, tell
-from imads_hpo.objective import WrappedObjective, objective
+from imads_hpo.objective import WrappedObjective, build_trial_program, objective
+from imads_hpo.sink import ListSink, NullSink, RunLogSink
 from imads_hpo.optimizer import minimize
 from imads_hpo.repro import (
     DeterminismConfig,
@@ -35,6 +40,7 @@ from imads_hpo.repro import (
     configure_determinism,
     derive_seed,
 )
+from imads_hpo.integrations import DashboardSink, RunLogAdapter
 from imads_hpo.result import Result, TrialRecord
 from imads_hpo.space import Categorical, Integer, LogReal, Real, Space
 
@@ -44,9 +50,11 @@ __all__ = [
     # Encoding
     "SpaceEncoder",
     # Fidelity
-    "EpochFidelity", "Fidelity",
+    "DataFractionFidelity", "EpochFidelity", "ExplicitFidelity", "Fidelity", "FidelitySchedule",
     # Objective
-    "WrappedObjective", "objective",
+    "WrappedObjective", "build_trial_program", "objective",
+    # Sink
+    "ListSink", "NullSink", "RunLogSink",
     # Optimizer
     "minimize",
     # Result
@@ -60,7 +68,12 @@ __all__ = [
     # Checkpoint
     "CheckpointManager", "TrainingState",
     # Constraints
+    "CompositeConstraint", "ConditionalConstraint", "DynamicBoundConstraint",
     "GpuMemoryConstraint", "LatencyConstraint", "ModelSizeConstraint",
     # Callbacks
     "Callback", "PrintCallback",
+    # Early stopping
+    "EarlyStoppingRule", "MedianStopper", "PatientStopper", "ThresholdStopper",
+    # Integrations
+    "DashboardSink", "RunLogAdapter",
 ]

@@ -33,4 +33,45 @@ class ModelSizeConstraint:
         return float(actual_params - self.max_params)
 
 
-__all__ = ["GpuMemoryConstraint", "LatencyConstraint", "ModelSizeConstraint"]
+@dataclass(frozen=True)
+class ConditionalConstraint:
+    """Constraint active only when predicate(params) is True."""
+
+    predicate: Callable[[dict[str, Any]], bool]
+    inner: Callable[[float], float]
+    inactive_value: float = -1.0  # feasible when inactive
+
+    def __call__(self, actual: float, params: dict[str, Any]) -> float:
+        if self.predicate(params):
+            return self.inner(actual)
+        return self.inactive_value
+
+
+@dataclass(frozen=True)
+class DynamicBoundConstraint:
+    """Constraint where the bound depends on hyperparameters."""
+
+    bound_fn: Callable[[dict[str, Any]], float]
+
+    def __call__(self, actual: float, params: dict[str, Any]) -> float:
+        return actual - self.bound_fn(params)
+
+
+@dataclass(frozen=True)
+class CompositeConstraint:
+    """Max of multiple constraints (all must be feasible)."""
+
+    constraints: tuple[Callable[..., float], ...]
+
+    def __call__(self, actuals: list[float], params: dict[str, Any]) -> float:
+        return max(c(a, params) for a, c in zip(actuals, self.constraints))
+
+
+__all__ = [
+    "GpuMemoryConstraint",
+    "LatencyConstraint",
+    "ModelSizeConstraint",
+    "ConditionalConstraint",
+    "DynamicBoundConstraint",
+    "CompositeConstraint",
+]

@@ -8,10 +8,16 @@
 
 - **Multi-fidelity evaluation**: cheap evaluations first (few epochs), expensive truth last (full training)
 - **Constraint support**: GPU memory, latency, model size — as first-class citizens
+- **Conditional constraints**: predicates, dynamic bounds, and composite constraints
 - **Deterministic reproducibility**: identical seeds + dataset = identical results, regardless of hardware
 - **Functional core**: currying and Run monad for explicit state management
+- **Run monad pipeline**: composable trial execution via `build_trial_program()`
 - **Categorical variables**: 64-bit integer encoding (unlike NOMAD 4 / PyNomadBBO which lack categorical support)
 - **Checkpoint prefix reuse**: resume training from earlier fidelity levels instead of restarting
+- **Flexible fidelity schedules**: epoch-based, data-fraction-based, or explicit schedules via the `FidelitySchedule` protocol
+- **Early stopping**: patient, median, and threshold stopping rules
+- **Dashboard integration**: Weights & Biases, MLflow, and TensorBoard via the `DashboardSink` protocol
+- **Multi-objective HPO**: optimize multiple objectives with Pareto front extraction
 
 ## Installation
 
@@ -19,9 +25,15 @@
 uv add imads-hpo
 # or
 pip install imads-hpo
+
+# With optional dashboard integrations:
+uv add imads-hpo[wandb]
+uv add imads-hpo[mlflow]
+uv add imads-hpo[tensorboard]
+uv add imads-hpo[all]
 ```
 
-Dependencies: `imads` (built from git), `torch>=2.0`, `safetensors`.
+Dependencies: `imads` (built from git), `torch>=2.0`, `safetensors`. Optional: `wandb`, `mlflow`, `tensorboardX`.
 
 ## Quick Start
 
@@ -43,7 +55,7 @@ def train(params, fidelity):
     model = build_model(params)
     opt = build_optimizer(model, params)
     for epoch in range(fidelity.epochs):
-        train_one_epoch(model, opt)
+        train_one_epoch(model, opt, data_fraction=fidelity.data_fraction)
     val_loss = evaluate(model)
     gpu_gb = torch.cuda.max_memory_allocated() / 1e9
     return val_loss, [gpu_gb - 8.0]  # constraint: GPU <= 8 GB
@@ -83,7 +95,7 @@ space = hpo.Space({
 })
 ```
 
-## Multi-Fidelity: Epoch-Based Progressive Evaluation
+## Multi-Fidelity: Progressive Evaluation
 
 IMADS uses a 2-axis fidelity ladder `(τ, S)`:
 
@@ -93,11 +105,61 @@ IMADS uses a 2-axis fidelity ladder `(τ, S)`:
 | `S` (smc) | Number of independent training seeds for noise averaging. |
 | TRUTH | Final level: full `max_epochs` with all seeds. |
 
+### EpochFidelity
+
+The default epoch-based fidelity schedule:
+
 ```python
 fidelity = hpo.EpochFidelity(
     min_epochs=5,     # cheapest: 5 epochs (τ = 20)
     max_epochs=100,   # TRUTH: 100 epochs (τ = 1)
     num_seeds=3,      # S levels: [1, 3]
+)
+```
+
+### FidelitySchedule Protocol
+
+Any fidelity schedule implements the `FidelitySchedule` protocol (runtime-checkable):
+
+```python
+class FidelitySchedule(Protocol):
+    tau_levels: list[int]
+    smc_levels: list[int]
+    def resolve_fidelity(self, tau: int, smc: int) -> Fidelity: ...
+```
+
+The `Fidelity` dataclass includes a `data_fraction: float = 1.0` field, enabling data-subsampling-based fidelity.
+
+### DataFractionFidelity
+
+Fidelity based on data subsampling rather than epochs:
+
+```python
+fidelity = hpo.DataFractionFidelity(
+    fractions=[0.1, 0.25, 0.5, 1.0],  # progressive data fractions
+    num_seeds=3,
+)
+```
+
+### ExplicitFidelity
+
+User-specified epoch steps for full control:
+
+```python
+fidelity = hpo.ExplicitFidelity(
+    epoch_steps=[10, 25, 50, 100],  # explicit epoch counts per level
+    num_seeds=3,
+)
+```
+
+The `minimize()` function accepts any `FidelitySchedule`, not just `EpochFidelity`:
+
+```python
+result = hpo.minimize(
+    train,
+    preset="balanced",
+    fidelity=hpo.DataFractionFidelity(fractions=[0.1, 0.5, 1.0], num_seeds=2),
+    seed=42,
 )
 ```
 
@@ -190,6 +252,38 @@ program = (
 state, value, log = program.execute({"lr": 0.01}, initial_state)
 ```
 
+### Run Monad Pipeline (Trial Execution)
+
+`WrappedObjective.evaluate()` uses a Run monad pipeline instead of a direct function call. The pipeline is composed by `build_trial_program()`:
+
+```
+_configure_determinism() → _load_or_init_checkpoint() → _execute_objective() → _save_checkpoint()
+```
+
+```python
+from imads_hpo import build_trial_program
+
+program = build_trial_program(fn, checkpoint_enabled=True)
+```
+
+#### RunLogSink
+
+The `RunLogSink` protocol consumes `RunLog` events emitted during pipeline execution. `WrappedObjective` has a `log_sink` field that accepts any `RunLogSink`:
+
+```python
+from imads_hpo import NullSink, ListSink
+
+# NullSink (default) — discards all events
+obj = hpo.objective(space)(train)
+obj.log_sink = NullSink()
+
+# ListSink — accumulates events (useful for testing)
+sink = ListSink()
+obj.log_sink = sink
+# ... run optimization ...
+print(sink.events)
+```
+
 ## Constraints
 
 ```python
@@ -208,6 +302,162 @@ def train(params, fidelity):
 
 Constraints are evaluated alongside the objective. IMADS uses its conservative early-infeasible screening to skip obviously infeasible candidates cheaply.
 
+### Conditional Constraints
+
+#### ConditionalConstraint
+
+A constraint that is active only when a predicate on the hyperparameters returns `True`. When inactive, the constraint returns `inactive_value` (default `-1.0`, i.e. feasible):
+
+```python
+from imads_hpo import ConditionalConstraint
+
+# Only enforce GPU constraint when batch_size > 128
+gpu_constraint = ConditionalConstraint(
+    predicate=lambda params: params["batch_size"] > 128,
+    inner=lambda result: result.gpu_gb - 8.0,
+    inactive_value=-1.0,
+)
+```
+
+#### DynamicBoundConstraint
+
+A constraint whose bound depends on the hyperparameters themselves:
+
+```python
+from imads_hpo import DynamicBoundConstraint
+
+# Latency bound varies with model size
+latency_constraint = DynamicBoundConstraint(
+    bound_fn=lambda params: 50.0 if params["layers"] <= 4 else 100.0,
+)
+```
+
+#### CompositeConstraint
+
+Combines multiple constraints by taking the maximum (most violated):
+
+```python
+from imads_hpo import CompositeConstraint
+
+combined = CompositeConstraint(gpu_constraint, latency_constraint)
+```
+
+## Early Stopping
+
+The `EarlyStoppingRule` protocol defines rules that can terminate a trial early based on its training trajectory:
+
+```python
+class EarlyStoppingRule(Protocol):
+    def should_stop(self, epoch: int, metric: float, history: list[float]) -> bool: ...
+    def reset(self) -> None: ...
+```
+
+### PatientStopper
+
+Stop if no improvement for `patience` consecutive epochs:
+
+```python
+from imads_hpo import PatientStopper
+
+stopper = PatientStopper(patience=10, min_delta=1e-4)
+```
+
+### MedianStopper
+
+Stop if the current trial's metric is below the median of completed trials:
+
+```python
+from imads_hpo import MedianStopper
+
+stopper = MedianStopper(completed_curves=completed, min_epochs=5)
+```
+
+### ThresholdStopper
+
+Stop if the metric exceeds a fixed threshold:
+
+```python
+from imads_hpo import ThresholdStopper
+
+stopper = ThresholdStopper(threshold=2.0, min_epochs=3)
+```
+
+## Dashboard Integration
+
+The `DashboardSink` protocol routes trial metrics to external dashboards:
+
+```python
+class DashboardSink(Protocol):
+    def on_trial_start(self, trial_id: int, params: dict) -> None: ...
+    def on_trial_metric(self, trial_id: int, epoch: int, metric: float) -> None: ...
+    def on_trial_end(self, trial_id: int, value: float) -> None: ...
+    def on_study_end(self) -> None: ...
+    def flush(self) -> None: ...
+```
+
+`RunLogAdapter` bridges `RunLog` events to a `DashboardSink`.
+
+### Backend Implementations
+
+Available in the `integrations/` subpackage:
+
+```python
+from imads_hpo.integrations import WandbSink, MLflowSink, TensorBoardSink
+
+# Weights & Biases
+sink = WandbSink(project="my-hpo-study")
+
+# MLflow
+sink = MLflowSink(experiment_name="hpo-run")
+
+# TensorBoard
+sink = TensorBoardSink(log_dir="runs/hpo")
+```
+
+Each backend requires its optional dependency. Install with extras:
+
+```bash
+uv add imads-hpo[wandb]
+uv add imads-hpo[mlflow]
+uv add imads-hpo[tensorboard]
+uv add imads-hpo[all]         # all integrations
+```
+
+## Multi-Objective HPO
+
+Optimize multiple objectives simultaneously by specifying `num_objectives`:
+
+```python
+@hpo.objective(space, num_objectives=2, num_constraints=1)
+def train(params, fidelity):
+    model = build_model(params)
+    opt = build_optimizer(model, params)
+    for epoch in range(fidelity.epochs):
+        train_one_epoch(model, opt)
+    val_loss = evaluate(model)
+    latency = measure_inference_time(model)
+    gpu_gb = torch.cuda.max_memory_allocated() / 1e9
+    return [val_loss, latency], [gpu_gb - 8.0]
+```
+
+The `WrappedObjective` has a `num_objectives` field reflecting the number of objectives. When `num_objectives > 1`, the `TrialRecord.value` type is `list[float]` instead of `float`.
+
+The result includes a Pareto front:
+
+```python
+result = hpo.minimize(
+    train,
+    preset="balanced",
+    workers=4,
+    fidelity=hpo.EpochFidelity(min_epochs=5, max_epochs=100, num_seeds=3),
+    seed=42,
+)
+
+# Pareto-optimal trials
+for trial in result.pareto_front:
+    print(trial.params, trial.value)  # value is [loss, latency]
+```
+
 ## Presets
 
 | Preset | Use case |
@@ -223,10 +473,40 @@ Constraints are evaluated alongside the objective. IMADS uses its conservative e
 | Function / Class | Description |
 |-----------------|-------------|
 | `Space({...})` | Define search space |
-| `@objective(space, num_constraints)` | Wrap training function |
+| `@objective(space, num_constraints, num_objectives)` | Wrap training function |
 | `minimize(obj, preset, ...)` | Run optimization |
-| `EpochFidelity(min, max, seeds)` | Configure multi-fidelity |
-| `Result` | Optimization result with `.best_params`, `.best_value` |
+| `EpochFidelity(min, max, seeds)` | Epoch-based multi-fidelity |
+| `DataFractionFidelity(fractions, seeds)` | Data subsampling fidelity |
+| `ExplicitFidelity(epoch_steps, seeds)` | User-specified epoch steps |
+| `FidelitySchedule` | Protocol for custom fidelity schedules |
+| `Result` | Optimization result with `.best_params`, `.best_value`, `.pareto_front` |
+
+### Constraints
+
+| Function / Class | Description |
+|-----------------|-------------|
+| `ConditionalConstraint(predicate, inner, inactive_value)` | Active only when predicate is True |
+| `DynamicBoundConstraint(bound_fn)` | Bound depends on hyperparameters |
+| `CompositeConstraint(*constraints)` | Max of multiple constraints |
+
+### Early Stopping
+
+| Function / Class | Description |
+|-----------------|-------------|
+| `EarlyStoppingRule` | Protocol for stopping rules |
+| `PatientStopper(patience, min_delta)` | Stop on no improvement |
+| `MedianStopper(completed_curves, min_epochs)` | Stop if below median |
+| `ThresholdStopper(threshold, min_epochs)` | Stop if above threshold |
+
+### Dashboard Integration
+
+| Function / Class | Description |
+|-----------------|-------------|
+| `DashboardSink` | Protocol for dashboard backends |
+| `RunLogAdapter` | Routes RunLog events to DashboardSink |
+| `WandbSink` | Weights & Biases integration |
+| `MLflowSink` | MLflow integration |
+| `TensorBoardSink` | TensorBoard integration |
 
 ### Reproducibility
 
@@ -247,3 +527,7 @@ Constraints are evaluated alongside the objective. IMADS uses its conservative e
 | `ask()`, `get_state()`, `put_state(s)` | Monad primitives |
 | `tell(event)` | Emit log event |
 | `sequence(programs)` | Run programs in order |
+| `build_trial_program(fn, checkpoint_enabled)` | Compose trial execution pipeline |
+| `RunLogSink` | Protocol for consuming RunLog events |
+| `NullSink` | Discards all RunLog events (default) |
+| `ListSink` | Accumulates RunLog events (testing) |
