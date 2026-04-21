@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import imads
 
@@ -13,7 +13,7 @@ from imads_hpo.encoding import SpaceEncoder
 from imads_hpo.evaluator import HpoEvaluator
 from imads_hpo.fidelity import FidelitySchedule
 from imads_hpo.objective import WrappedObjective
-from imads_hpo.result import Result
+from imads_hpo.result import Result, TrialRecord
 
 
 def minimize(
@@ -68,7 +68,18 @@ def minimize(
         rng_master_seed=seed,
     )
 
-    evaluator = HpoEvaluator(wrapped=objective, master_seed=seed)
+    # Collect per-trial records via the HpoEvaluator sink. The IMADS
+    # engine core's ``EngineOutput`` does not carry per-trial history
+    # (it only reports ``x_best`` / ``f_best`` / ``stats``), so we derive
+    # the ``Result.trials`` list from the evaluator side — every
+    # ``mc_sample`` call corresponds to one engine evaluation.
+    trials: List[TrialRecord] = []
+
+    evaluator = HpoEvaluator(
+        wrapped=objective,
+        master_seed=seed,
+        trial_sink=trials,
+    )
     engine = imads.Engine()
 
     output = engine.run(
@@ -86,10 +97,25 @@ def minimize(
         best_mesh = list(output.x_best)
         best_params = encoder.decode(best_mesh)
 
+    # best_value: SO → float (output.f_best), MO → list[float] (output.f_best_all).
+    n_obj = objective.num_objectives
+    if n_obj > 1:
+        f_best_all = getattr(output, "f_best_all", None)
+        best_value: Any = list(f_best_all) if f_best_all is not None else None
+    else:
+        best_value = output.f_best
+
+    # Pareto front: non-dominated feasible trials under minimisation.
+    pareto: List[TrialRecord] = []
+    if n_obj > 1 and trials:
+        pareto = _nondominated(trials)
+
     return Result(
         best_params=best_params,
-        best_value=output.f_best,
+        best_value=best_value,
         best_mesh_coords=best_mesh,
+        trials=trials,
+        pareto_front=pareto,
         stats={
             "truth_evals": output.truth_evals,
             "partial_steps": output.partial_steps,
@@ -97,6 +123,41 @@ def minimize(
             "invalid_eval_rejects": output.invalid_eval_rejects,
         },
     )
+
+
+def _nondominated(trials: List[TrialRecord]) -> List[TrialRecord]:
+    """Return the Pareto-optimal subset of ``trials`` under minimisation.
+
+    Only feasible trials participate. A trial ``a`` is dominated by ``b``
+    when every objective of ``b`` is ≤ the corresponding objective of
+    ``a`` and at least one is strictly less.
+    """
+    feasible = [t for t in trials if t.feasible]
+
+    def _vec(t: TrialRecord) -> List[float]:
+        v = t.value
+        if isinstance(v, (list, tuple)):
+            return [float(x) for x in v]
+        return [float(v)]
+
+    kept: List[TrialRecord] = []
+    for i, ti in enumerate(feasible):
+        vi = _vec(ti)
+        dominated = False
+        for j, tj in enumerate(feasible):
+            if i == j:
+                continue
+            vj = _vec(tj)
+            if len(vi) != len(vj):
+                continue
+            if all(b <= a for a, b in zip(vi, vj)) and any(
+                b < a for a, b in zip(vi, vj)
+            ):
+                dominated = True
+                break
+        if not dominated:
+            kept.append(ti)
+    return kept
 
 
 __all__ = ["minimize"]

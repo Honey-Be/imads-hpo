@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, List, Optional
 
 from imads_hpo.encoding import SpaceEncoder
 from imads_hpo.objective import WrappedObjective
@@ -13,15 +13,32 @@ class HpoEvaluator:
 
     This is the bridge between the IMADS engine's ``mc_sample`` interface
     and the user's PyTorch training function.
+
+    Parameters
+    ----------
+    wrapped:
+        The ``WrappedObjective`` produced by ``@hpo.objective``.
+    master_seed:
+        Master RNG seed for deterministic execution.
+    trial_sink:
+        Optional list that receives a :class:`~imads_hpo.result.TrialRecord`
+        per ``mc_sample`` invocation. Used by ``imads_hpo.minimize`` to
+        populate ``Result.trials`` (and, for multi-objective runs, to
+        derive ``Result.pareto_front``). The engine core's
+        ``EngineOutput`` does not carry per-trial history, so the history
+        is captured here instead. Single-objective values are stored as a
+        ``float``; multi-objective values as ``list[float]``.
     """
 
     def __init__(
         self,
         wrapped: WrappedObjective,
         master_seed: int,
+        trial_sink: Optional[List[Any]] = None,
     ):
         self._wrapped = wrapped
         self._master_seed = master_seed
+        self._trial_sink = trial_sink
 
     def mc_sample(
         self, x: list[float], tau: int, smc: int, k: int
@@ -41,13 +58,43 @@ class HpoEvaluator:
         # Convert continuous x to mesh coords, then decode to params
         mesh_coords = [round(xi / encoder.mesh_base_step) for xi in x]
 
-        return self._wrapped.evaluate(
+        result = self._wrapped.evaluate(
             mesh_coords=mesh_coords,
             tau=tau,
             smc=smc,
             k=k,
             master_seed=self._master_seed,
         )
+
+        if self._trial_sink is not None:
+            # Lazy import to avoid circular dependency (result imports nothing
+            # heavy, but keeping it local makes this evaluator module
+            # import-cheap).
+            from imads_hpo.result import TrialRecord
+
+            value, constraints = result[0], result[1]
+            try:
+                params = encoder.decode(mesh_coords)
+            except Exception:
+                params = {}
+            cons_list = list(constraints) if constraints is not None else []
+            feasible = all(c <= 0.0 for c in cons_list)
+            self._trial_sink.append(
+                TrialRecord(
+                    params=params,
+                    value=value,
+                    constraints=cons_list,
+                    feasible=feasible,
+                    mesh_coords=list(mesh_coords),
+                    # mc_sample does not expose whether this is the engine's
+                    # final truth evaluation; downstream users interested in
+                    # distinguishing partial vs truth can filter by tau/smc
+                    # against the engine config.
+                    truth_eval=True,
+                )
+            )
+
+        return result
 
     def cheap_constraints(self, x: list[float]) -> bool:
         """Optional fast rejection (always accept by default)."""
